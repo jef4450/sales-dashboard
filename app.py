@@ -5,6 +5,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+from sklearn.linear_model import LinearRegression
+import numpy as np
+
 # ================================
 # 2. PAGE CONFIG
 # ================================
@@ -31,25 +34,52 @@ df['Year'] = df['Order Date'].dt.year
 df['Month'] = df['Order Date'].dt.month
 
 # ================================
+# 🔥 ML DATA PREPARATION
+# ================================
+df = df.sort_values('Order Date')
+
+daily_sales = df.groupby('Order Date')['Sales'].sum().reset_index()
+
+daily_sales['Days'] = (daily_sales['Order Date'] - daily_sales['Order Date'].min()).dt.days
+
+X = daily_sales[['Days']]
+y = daily_sales['Sales']
+
+model = LinearRegression()
+model.fit(X, y)
+
+# Future predictions (next 30 days)
+last_day = X['Days'].max()
+future_days = np.arange(last_day + 1, last_day + 31).reshape(-1, 1)
+future_preds = model.predict(future_days)
+
+future_dates = pd.date_range(
+    start=daily_sales['Order Date'].max() + pd.Timedelta(days=1),
+    periods=30
+)
+
+forecast_df = pd.DataFrame({
+    'Order Date': future_dates,
+    'Sales': future_preds
+})
+
+# ================================
 # 4. SIDEBAR FILTERS
 # ================================
 st.sidebar.header("Filters")
 
-# Region filter
 region = st.sidebar.multiselect(
     "Select Region",
     options=df['Region'].unique(),
     default=df['Region'].unique()
 )
 
-# Category filter
 category = st.sidebar.multiselect(
     "Select Category",
     options=df['Category'].unique(),
     default=df['Category'].unique()
 )
 
-# Date range filter
 date_range = st.sidebar.date_input(
     "Select Date Range",
     [df['Order Date'].min(), df['Order Date'].max()]
@@ -123,7 +153,7 @@ fig4 = px.bar(
     title='Top 10 Products'
 )
 
-# --- Sub-category (replacement chart) ---
+# --- Sub-category ---
 subcat_sales = filtered_df.groupby('Sub-Category')['Sales'].sum().reset_index()
 
 fig5 = px.bar(
@@ -135,7 +165,39 @@ fig5 = px.bar(
 )
 
 # ================================
-# 8. DISPLAY CHARTS
+# 🔥 8. FORECAST CHART (IMPROVED)
+# ================================
+
+st.subheader("📈 Sales Forecast (Next 30 Days)")
+
+# Actual data
+actual_df = daily_sales.copy()
+actual_df['Type'] = 'Actual'
+
+# Forecast data
+forecast_df_copy = forecast_df.copy()
+forecast_df_copy['Type'] = 'Forecast'
+
+# Combine
+combined_df = pd.concat([actual_df, forecast_df_copy])
+
+# Plot
+fig6 = px.line(
+    combined_df,
+    x='Order Date',
+    y='Sales',
+    color='Type',
+    title='Sales Forecast vs Actual',
+)
+
+# Make forecast dashed
+fig6.update_traces(
+    line=dict(dash='dash'),
+    selector=dict(name='Forecast')
+)
+
+# ================================
+# 9. DISPLAY CHARTS
 # ================================
 
 st.plotly_chart(fig1, use_container_width=True)
@@ -143,3 +205,5 @@ st.plotly_chart(fig2, use_container_width=True)
 st.plotly_chart(fig3, use_container_width=True)
 st.plotly_chart(fig4, use_container_width=True)
 st.plotly_chart(fig5, use_container_width=True)
+
+st.plotly_chart(fig6, use_container_width=True)
